@@ -1,113 +1,103 @@
-# MS Notificações — Unimed
+# MS Notificações — Sistema de Agendamento Unimed
 
-> Microserviço responsável pelo domínio de Notificações e Comunicação  
-> **Stack:** Node.js · TypeScript · Express · Azure SQL Database · Clean Architecture
-
-**Equipe:** Gabriel Girotto | Giovani Tortatto | Lucas Cunha | Matheus Garozi | Wallace Vinicius
-
----
+Microsserviço responsável pelo domínio de **Notificações** (confirmações, lembretes e cancelamentos enviados por e-mail, SMS e push) do Sistema de Agendamento Unimed. Persiste os dados em **Azure SQL Database** e expõe uma API REST documentada via Swagger.
 
 ## Arquitetura
 
+Este microsserviço segue **Clean Architecture** com quatro camadas isoladas e organização interna por **Vertical Slice**:
+
 ```
 src/
-├── domain/                         # Camada de Domínio
-│   ├── entities/Notificacao.ts     # Entidade com regras (marcarEnviada, marcarLida...)
-│   └── repositories/               # Interface INotificacaoRepository
-├── application/                    # Camada de Aplicação
-│   ├── dtos/                       # DTOs de entrada/saída
-│   └── use-cases/                  # Vertical Slice por feature
+├── domain/            # Entidades e interfaces de repositório
+│   ├── entities/             -> Notificacao
+│   └── repositories/         -> INotificacaoRepository
+├── application/       # Casos de uso (Vertical Slice)
+│   └── use-cases/
 │       ├── CreateNotificacao/
-│       └── notificacao.use-cases.ts (Get, List, Update, Delete)
-├── infrastructure/                 # Camada de Infraestrutura
-│   ├── database/connection.ts      # Conexão Azure SQL + criação de tabela
-│   └── repositories/               # SqlNotificacaoRepository (mssql)
-└── api/server.ts                   # Express + Swagger + rotas
+│       ├── GetNotificacao/
+│       ├── ListNotificacoes/
+│       └── UpdateNotificacao/
+├── infrastructure/    # Implementações concretas (Azure SQL via mssql)
+│   ├── database/
+│   └── repositories/         -> SqlNotificacaoRepository
+└── api/               # Controllers REST e configuração Swagger
 ```
 
----
+A conformidade com as regras de dependência é garantida por **testes de arquitetura** (ArchUnitTS).
+
+### Comportamento de envio
+Ao criar uma notificação, o caso de uso `CreateNotificacao` invoca a regra de domínio `marcarEnviada()`, que simula o disparo pelo provedor (e-mail/SMS/push). A notificação é persistida já com status **ENVIADA** e a data de envio registrada.
 
 ## Tecnologias
 
-| Tecnologia | Versão | Uso |
-|-----------|--------|-----|
-| Node.js | 20 LTS | Runtime |
-| TypeScript | 5.3 | Tipagem estática |
-| Express | 4.18 | Framework HTTP |
-| mssql | 10.x | Driver Azure SQL |
-| Azure SQL Database | Free 1 DTU | Banco de dados |
-| Swagger UI | 5.x | Documentação |
-| Jest | 29 | Testes |
+- **Node.js** + **TypeScript**
+- **Express** (API REST)
+- **Azure SQL Database** + **mssql** (persistência)
+- **Swagger** (swagger-ui-express + swagger-jsdoc)
+- **Jest** + **ts-jest** (testes unitários)
+- **ArchUnitTS** (testes de arquitetura)
+- **Docker**
 
----
+## Endpoints
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| GET    | /notificacoes | Lista notificações (filtros: status, canal) |
+| GET    | /notificacoes/:id | Busca uma notificação por ID |
+| POST   | /notificacoes | Cria uma notificação (nasce como ENVIADA) |
+| PUT    | /notificacoes/:id | Atualiza o status da notificação |
+| DELETE | /notificacoes/:id | Remove uma notificação |
+
+Documentação completa em **http://localhost:3002/docs**
 
 ## Como rodar localmente
 
-### 1. Configurar variáveis de ambiente
-
 ```bash
-cp .env.example .env
-```
-
-```
-PORT=3002
-AZURE_SQL_SERVER=seu-server.database.windows.net
-AZURE_SQL_DATABASE=notificacoes
-AZURE_SQL_USER=seu-usuario
-AZURE_SQL_PASSWORD=sua-senha
-```
-
-> A tabela `Notificacoes` é criada automaticamente na primeira execução.
-
-### 2. Instalar e rodar
-
-```bash
+# 1. Instalar dependências
 npm install
+
+# 2. Criar o arquivo .env na raiz com:
+#    PORT=3002
+#    AZURE_SQL_SERVER=<seu-servidor>.database.windows.net
+#    AZURE_SQL_DATABASE=<seu-banco>
+#    AZURE_SQL_USER=<seu-usuario>
+#    AZURE_SQL_PASSWORD=<sua-senha>
+#    NODE_ENV=development
+
+# 3. Rodar em modo desenvolvimento
 npm run dev
 ```
 
-### 3. Acessar
+O serviço sobe em **http://localhost:3002** e o Swagger em **http://localhost:3002/docs**.
 
-| URL | Descrição |
-|-----|-----------|
-| http://localhost:3002/notificacoes | API REST |
-| http://localhost:3002/docs | Swagger UI |
-| http://localhost:3002/health | Health check |
-
-### 4. Rodar testes
+## Testes
 
 ```bash
+# Todos os testes
 npm test
-```
 
----
+# Apenas testes de arquitetura
+npm test -- --testPathPattern=architecture
+```
 
 ## Docker
 
 ```bash
-docker build -t dockerhubuser/pjbl/ms-notificacoes:v1 .
-docker push dockerhubuser/pjbl/ms-notificacoes:v1
+docker build -t wallacevini12/ms-notificacoes:v1 .
+docker push wallacevini12/ms-notificacoes:v1
 ```
 
----
+Imagem publicada: `wallacevini12/ms-notificacoes:v1`
 
-## Exemplo de request
+## Vídeo de demonstração
+https://youtu.be/yXW6vKhXH8o
 
-```bash
-# Criar notificação
-curl -X POST http://localhost:3002/notificacoes \
-  -H "Content-Type: application/json" \
-  -d '{
-    "agendamentoId": "ag-001",
-    "beneficiarioId": "b-001",
-    "beneficiarioNome": "Maria Silva",
-    "tipo": "CONFIRMACAO",
-    "canal": "EMAIL",
-    "mensagem": "Sua consulta foi confirmada para 10/05 às 09:00."
-  }'
+## Equipe
 
-# Marcar como enviada
-curl -X PUT http://localhost:3002/notificacoes/1 \
-  -H "Content-Type: application/json" \
-  -d '{ "status": "ENVIADA" }'
-```
+- Gabriel Girotto
+- Giovani Tortatto
+- Lucas Cunha
+- Matheus Garozi
+- Wallace Vinicius
+
+> Pontifícia Universidade Católica do Paraná (PUCPR) — Arquitetura e Soluções Cloud — 2026
